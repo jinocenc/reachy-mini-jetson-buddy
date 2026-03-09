@@ -206,10 +206,6 @@ class KokoroTTS:
             self._kokoro = None
 
 
-# Keep backward compat: TTS = PiperTTS
-TTS = PiperTTS
-
-
 def create_tts(backend: str = "piper", voice: str = "", speed: float = 1.0,
                piper_voice: str = "en_US-lessac-medium", lang: str = "en-us"):
     """Factory: create the right TTS backend. Falls back to Piper if Kokoro model is missing."""

@@ -1,14 +1,12 @@
 """CLI — text chat, single question, system info, RAG management."""
 
 import time
-from typing import Optional, Iterator
+from typing import Optional
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Prompt
-from rich.table import Table
-from rich import box
 import typer
 
 from app.config import Config

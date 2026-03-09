@@ -1,7 +1,6 @@
 """RAG — embeddings, ChromaDB knowledge base, and retrieval in one module."""
 
 import os
-import json
 import hashlib
 from pathlib import Path
 from typing import List, Optional

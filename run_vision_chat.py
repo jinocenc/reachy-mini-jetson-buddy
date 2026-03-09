@@ -9,7 +9,6 @@ Usage:
 
 import os
 import signal
-import subprocess
 import sys
 import threading
 import time
@@ -26,124 +25,11 @@ from app.camera import Camera
 from app.pipeline import (
     SAMPLE_RATE, MicRecorder, warmup_stt, vad_loop, stream_and_speak, load_silero,
 )
+from app.reachy import kill_stale_camera_holders, connect as connect_reachy
 from rich.console import Console
 from rich.panel import Panel
 
-try:
-    from reachy_mini import ReachyMini
-    import psutil
-    HAS_REACHY = True
-except ImportError:
-    HAS_REACHY = False
-    psutil = None
-
 console = Console()
-
-
-def _is_reachy_daemon_running() -> bool:
-    if not psutil:
-        return False
-    for proc in psutil.process_iter(["cmdline"]):
-        try:
-            cmdline = proc.info.get("cmdline") or []
-            for part in cmdline:
-                if "reachy-mini-daemon" in part:
-                    return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
-            continue
-    return False
-
-
-def _kill_reachy_daemon() -> bool:
-    if not psutil:
-        return False
-    for proc in psutil.process_iter(["pid", "cmdline"]):
-        try:
-            cmdline = proc.info.get("cmdline") or []
-            for part in cmdline:
-                if "reachy-mini-daemon" in part:
-                    pid = proc.pid
-                    console.print(f"  [yellow]Killing stale Reachy daemon (PID {pid})[/yellow]")
-                    os.kill(pid, signal.SIGKILL)
-                    time.sleep(2)
-                    return True
-        except (psutil.NoSuchProcess, psutil.AccessDenied, ProcessLookupError):
-            continue
-    return False
-
-
-def _kill_stale_camera_holders(device: int = 0):
-    try:
-        r = subprocess.run(
-            ["fuser", f"/dev/video{device}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        pids = r.stdout.strip().split()
-        my_pid = str(os.getpid())
-        for pid in pids:
-            pid = pid.strip().rstrip("m")
-            if pid and pid != my_pid:
-                console.print(f"  [yellow]Killing stale process {pid} holding /dev/video{device}[/yellow]")
-                os.kill(int(pid), signal.SIGKILL)
-        if pids:
-            time.sleep(0.5)
-    except Exception:
-        pass
-
-
-def _connect_reachy(config):
-    """Connect to Reachy Mini using config.reachy settings. Returns ReachyMini or None."""
-    if not HAS_REACHY or not config.reachy.enabled:
-        return None
-
-    rcfg = config.reachy
-    daemon_already_running = _is_reachy_daemon_running()
-
-    for attempt in range(rcfg.daemon_retry_attempts):
-        try:
-            if attempt == 0:
-                console.print("  Connecting to Reachy Mini...")
-            elif attempt == 1:
-                console.print(f"  [dim]Daemon may still be starting, waiting {rcfg.daemon_startup_wait:.0f}s...[/dim]")
-                time.sleep(rcfg.daemon_startup_wait)
-                console.print("  Retrying connection to Reachy Mini...")
-            else:
-                _kill_reachy_daemon()
-                console.print("  Retrying connection (fresh daemon)...")
-
-            reachy = ReachyMini(
-                spawn_daemon=rcfg.spawn_daemon,
-                use_sim=False,
-                timeout=rcfg.timeout,
-                media_backend=rcfg.media_backend,
-            )
-
-            reachy.enable_motors()
-            if rcfg.wake_on_start:
-                if daemon_already_running:
-                    console.print("  Ensuring Reachy Mini is awake...")
-                else:
-                    console.print("  Waking up Reachy Mini...")
-                reachy.wake_up()
-                time.sleep(0.5)
-                try:
-                    reachy.set_target_antenna_joint_positions(rcfg.antenna_rest_position)
-                    time.sleep(0.2)
-                except Exception:
-                    pass
-                console.print("  [green]✓ Reachy Mini awake (head up, camera ready)[/green]")
-            else:
-                console.print("  [green]✓ Reachy Mini connected (wake_on_start=false)[/green]")
-            return reachy
-
-        except Exception as e:
-            err_msg = str(e)
-            if ("localhost and network" in err_msg or "both localhost" in err_msg.lower()) and attempt < rcfg.daemon_retry_attempts - 1:
-                continue
-            console.print(f"  [yellow]⚠ Reachy Mini unavailable: {e}[/yellow]")
-            console.print("  [yellow]  Continuing without robot control[/yellow]")
-            return None
-    return None
 
 
 def main():
@@ -157,7 +43,7 @@ def main():
     ))
 
     # ── Reachy Mini ──────────────────────────────────────────────
-    reachy = _connect_reachy(config)
+    reachy = connect_reachy(config, console)
 
     # ── Audio setup ──────────────────────────────────────────────
     result = find_alsa_device(name_hint=config.audio.input_device or "Reachy Mini Audio")
@@ -169,7 +55,7 @@ def main():
     console.print(f"  Mic: {hw} ({mic_name})")
 
     # ── Camera setup (background ring buffer) ────────────────────
-    _kill_stale_camera_holders(config.vision.camera_device)
+    kill_stale_camera_holders(config.vision.camera_device, console)
 
     cam = Camera(
         device=config.vision.camera_device,

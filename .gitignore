@@ -3,22 +3,25 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.egg-info/
 .Python
+build/
+dist/
 venv/
 env/
 .venv/
 ENV/
 
-# Models (large binary files)
+# Models (large binary files — downloaded per README)
 models/*.gguf
 models/*.bin
 models/*.safetensors
 
-# TTS voice models (large binary files — download per README)
+# TTS voice models (large binary files — downloaded per README)
 voices/*.onnx
 voices/*.bin
 
-# Caches
+# Caches and data
 .cache/
 *.cache
 chroma_db/
@@ -59,5 +62,9 @@ temp/
 *.mp3
 *.ogg
 
-# Jupyter
+# Jupyter / testing
 .ipynb_checkpoints/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
