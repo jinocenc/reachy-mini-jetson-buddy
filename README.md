@@ -1,5 +1,11 @@
 # Reachy Mini Jetson Assistant
 
+<p align="center">
+  <a href="https://www.pollen-robotics.com/reachy-mini/"><img src="docs/images/reachy-icon.svg" alt="Reachy Mini Lite" height="180"/></a>
+  &nbsp;&nbsp;&nbsp;<b>x</b>&nbsp;&nbsp;&nbsp;
+  <a href="https://developer.nvidia.com/embedded/jetson-orin-nano"><img src="docs/images/jetson-family.png" alt="NVIDIA Jetson" height="180"/></a>
+</p>
+
 A low-latency, fully on-device voice and vision assistant for [Reachy Mini Lite](https://www.pollen-robotics.com/reachy-mini/) powered by NVIDIA Jetson. Everything runs locally with GPU acceleration — no cloud, no API keys, no internet required at runtime.
 
 > **Current target:** Jetson Orin Nano 8GB (JetPack 6.x, Python 3.10)
@@ -470,4 +476,4 @@ Check the Docker container is running: `docker ps`. View logs: `docker logs assi
 
 ## License
 
-Apache-2.0
+MIT — see [LICENSE](LICENSE) for details.
