@@ -203,6 +203,20 @@ tts:
   voice: "af_sarah"    # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george
 ```
 
+### Emotion Model
+
+The emotion classifier (DistilBERT SST-2, ~268 MB) downloads automatically on first run. No manual step needed.
+
+To pre-download for offline use:
+
+```bash
+mkdir -p models/emotion
+wget -O models/emotion/model.onnx \
+  "https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/onnx/model.onnx"
+wget -O models/emotion/tokenizer.json \
+  "https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/onnx/tokenizer.json"
+```
+
 ## Troubleshooting
 
 **`CUDAExecutionProvider` not available:**

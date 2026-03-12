@@ -12,14 +12,11 @@ env/
 .venv/
 ENV/
 
-# Models (large binary files — downloaded per README)
-models/*.gguf
-models/*.bin
-models/*.safetensors
+# Models (large binary files — auto-downloaded at runtime)
+models/
 
-# TTS voice models (large binary files — downloaded per README)
-voices/*.onnx
-voices/*.bin
+# TTS voice models (large binary files — auto-downloaded at runtime)
+voices/
 
 # Caches and data
 .cache/
