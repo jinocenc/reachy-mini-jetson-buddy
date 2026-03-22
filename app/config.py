@@ -127,6 +127,28 @@ class WebConfig:
     port: int = 8090
 
 
+@dataclass
+class PomodoroTimingConfig:
+    work_minutes: int = 25
+    short_break_minutes: int = 5
+    long_break_minutes: int = 15
+    cycles_before_long_break: int = 4
+
+
+@dataclass
+class PomodoroConfig:
+    mode: str = "standard"              # "standard" or "demo"
+    standard: PomodoroTimingConfig = field(default_factory=PomodoroTimingConfig)
+    demo: PomodoroTimingConfig = field(default_factory=lambda: PomodoroTimingConfig(
+        work_minutes=5, short_break_minutes=2, long_break_minutes=3, cycles_before_long_break=2,
+    ))
+
+    @property
+    def active(self) -> PomodoroTimingConfig:
+        """Return the timing config for the currently selected mode."""
+        return self.demo if self.mode == "demo" else self.standard
+
+
 _SECTIONS = [
     ("llm", "llm", LLMConfig),
     ("stt", "stt", STTConfig),
@@ -153,6 +175,7 @@ class Config:
     emotion: EmotionConfig = field(default_factory=EmotionConfig)
     rag: RAGConfig = field(default_factory=RAGConfig)
     web: WebConfig = field(default_factory=WebConfig)
+    pomodoro: PomodoroConfig = field(default_factory=PomodoroConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "Config":
@@ -169,6 +192,16 @@ class Config:
                 for k, v in data.get(yaml_key, {}).items():
                     if hasattr(section_obj, k):
                         setattr(section_obj, k, v)
+            # Pomodoro has nested structure — handle separately
+            pomo_data = data.get("pomodoro", {})
+            if "mode" in pomo_data:
+                config.pomodoro.mode = pomo_data["mode"]
+            for mode_name in ("standard", "demo"):
+                mode_data = pomo_data.get(mode_name, {})
+                timing = getattr(config.pomodoro, mode_name)
+                for k, v in mode_data.items():
+                    if hasattr(timing, k):
+                        setattr(timing, k, v)
         except Exception as e:
             print(f"Error loading config: {e}")
         return config

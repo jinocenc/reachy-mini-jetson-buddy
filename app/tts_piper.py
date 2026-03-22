@@ -1,4 +1,4 @@
-# Attention Warden — Piper TTS Backend
+# Reachy Study Buddy — Piper TTS Backend
 #
 # Lightweight, fast TTS using Piper (ONNX-based).
 # Lower latency than Kokoro, smaller footprint — ideal for rapid

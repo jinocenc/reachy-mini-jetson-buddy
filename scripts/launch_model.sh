@@ -1,5 +1,5 @@
 #!/bin/bash
-# Attention Warden — Model Launcher
+# Reachy Study Buddy — Model Launcher
 # Launches llama.cpp Docker containers by profile name.
 #
 # Usage:
@@ -63,25 +63,25 @@ BGE_SMALL_QUANT="Q8_0"
 
 case "${1:-help}" in
     reasoning)
-        launch_llm "$NEMOTRON_MINI_4B_REPO" "$NEMOTRON_MINI_4B_QUANT" 8080 4096 1 "warden-reasoning"
+        launch_llm "$NEMOTRON_MINI_4B_REPO" "$NEMOTRON_MINI_4B_QUANT" 8080 4096 1 "reachy-reasoning"
         ;;
 
     vision)
         case "${2:-cosmos}" in
             cosmos|cosmos_reason2_2b)
-                launch_llm "$COSMOS_REASON2_REPO" "$COSMOS_REASON2_QUANT" 8080 4096 1 "warden-vision"
+                launch_llm "$COSMOS_REASON2_REPO" "$COSMOS_REASON2_QUANT" 8080 4096 1 "reachy-vision"
                 ;;
             nemotron|nemotron_nano_2_vl)
-                launch_llm "$NEMOTRON_NANO_VL_REPO" "$NEMOTRON_NANO_VL_QUANT" 8080 4096 1 "warden-vision"
+                launch_llm "$NEMOTRON_NANO_VL_REPO" "$NEMOTRON_NANO_VL_QUANT" 8080 4096 1 "reachy-vision"
                 ;;
             gemma|gemma3_4b)
-                launch_llm "$GEMMA3_4B_REPO" "$GEMMA3_4B_QUANT" 8080 4096 1 "warden-vision"
+                launch_llm "$GEMMA3_4B_REPO" "$GEMMA3_4B_QUANT" 8080 4096 1 "reachy-vision"
                 ;;
             qwen3|qwen3_vl_2b)
-                launch_llm "$QWEN3_VL_2B_REPO" "$QWEN3_VL_2B_QUANT" 8080 4096 1 "warden-vision"
+                launch_llm "$QWEN3_VL_2B_REPO" "$QWEN3_VL_2B_QUANT" 8080 4096 1 "reachy-vision"
                 ;;
             qwen3.5|qwen3_5_vl_2b)
-                launch_llm "$QWEN3_5_VL_2B_REPO" "$QWEN3_5_VL_2B_QUANT" 8080 4096 1 "warden-vision"
+                launch_llm "$QWEN3_5_VL_2B_REPO" "$QWEN3_5_VL_2B_QUANT" 8080 4096 1 "reachy-vision"
                 ;;
             *)
                 echo "Unknown vision model: $2"
@@ -98,7 +98,7 @@ case "${1:-help}" in
     # ── Full profiles ──────────────────────────────────────────
 
     study_buddy_lite)
-        launch_llm "$COSMOS_REASON2_REPO" "$COSMOS_REASON2_QUANT" 8080 4096 1 "warden-vlm"
+        launch_llm "$COSMOS_REASON2_REPO" "$COSMOS_REASON2_QUANT" 8080 4096 1 "reachy-vlm"
         echo ""
         launch_embed "$BGE_SMALL_REPO" "$BGE_SMALL_QUANT" 8081
         echo ""
@@ -110,7 +110,7 @@ case "${1:-help}" in
         ;;
 
     study_buddy_balanced)
-        launch_llm "$QWEN3_5_VL_2B_REPO" "$QWEN3_5_VL_2B_QUANT" 8080 4096 1 "warden-vlm"
+        launch_llm "$QWEN3_5_VL_2B_REPO" "$QWEN3_5_VL_2B_QUANT" 8080 4096 1 "reachy-vlm"
         echo ""
         launch_embed "$BGE_SMALL_REPO" "$BGE_SMALL_QUANT" 8081
         echo ""
@@ -122,7 +122,7 @@ case "${1:-help}" in
         ;;
 
     study_buddy_full)
-        launch_llm "$NEMOTRON_NANO_VL_REPO" "$NEMOTRON_NANO_VL_QUANT" 8080 4096 1 "warden-vlm"
+        launch_llm "$NEMOTRON_NANO_VL_REPO" "$NEMOTRON_NANO_VL_QUANT" 8080 4096 1 "reachy-vlm"
         echo ""
         launch_embed "$BGE_SMALL_REPO" "$BGE_SMALL_QUANT" 8081
         echo ""
@@ -134,14 +134,14 @@ case "${1:-help}" in
         ;;
 
     stop)
-        echo "Stopping all Warden containers..."
-        docker stop warden-reasoning warden-vision warden-vlm warden-embed assistant-llm assistant-embed 2>/dev/null || true
-        docker rm warden-reasoning warden-vision warden-vlm warden-embed assistant-llm assistant-embed 2>/dev/null || true
+        echo "Stopping all Reachy containers..."
+        docker stop reachy-reasoning reachy-vision reachy-vlm reachy-embed assistant-llm assistant-embed 2>/dev/null || true
+        docker rm reachy-reasoning reachy-vision reachy-vlm reachy-embed assistant-llm assistant-embed 2>/dev/null || true
         echo "✓ All stopped"
         ;;
 
     help|*)
-        echo "Attention Warden — Model Launcher"
+        echo "Reachy Study Buddy — Model Launcher"
         echo ""
         echo "Usage: $0 <command> [model]"
         echo ""
@@ -160,6 +160,6 @@ case "${1:-help}" in
         echo "  study_buddy_balanced         Qwen3.5-VL + Whisper small + Kokoro"
         echo "  study_buddy_full             Nemotron-Nano-VL + Whisper small + Kokoro"
         echo ""
-        echo "  stop                         Stop all Warden containers"
+        echo "  stop                         Stop all Reachy containers"
         ;;
 esac

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Attention Warden — Model Download Script
+# Reachy Study Buddy — Model Download Script
 # Pre-downloads all GGUF models and speech assets for offline operation.
 #
 # Usage:
@@ -215,7 +215,7 @@ download_emotion() {
 # ─────────────────────────────────────────────────────────────────
 
 echo "╔══════════════════════════════════════════════════╗"
-echo "║   Attention Warden — Model Download             ║"
+echo "║   Reachy Study Buddy — Model Download             ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
 echo "Cache directory: $HF_CACHE"

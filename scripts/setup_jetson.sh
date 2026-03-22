@@ -1,6 +1,6 @@
 #!/bin/bash
 # ══════════════════════════════════════════════════════════════════
-# Attention Warden — Jetson Orin Nano Setup
+# Reachy Study Buddy — Jetson Orin Nano Setup
 # Automates the full SETUP.md installation sequence.
 #
 # Prerequisites:
@@ -36,7 +36,7 @@ fail()  { echo -e "${RED}✗${NC} $*" >&2; }
 banner() {
     echo ""
     echo -e "${CYAN}╔══════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║   Attention Warden — Jetson Setup                ║${NC}"
+    echo -e "${CYAN}║   Reachy Study Buddy — Jetson Setup                ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -428,7 +428,7 @@ case "${1:-full}" in
         echo "  1. Reboot if prompted (for dialout group)"
         echo "  2. Activate the environment:  source venv/bin/activate"
         echo "  3. Launch a model profile:    ./scripts/launch_model.sh study_buddy_balanced"
-        echo "  4. Start the Warden:          python3 run_web_vision_chat.py"
+        echo "  4. Start Reachy:          python3 run_web_vision_chat.py"
         echo "  5. Open the web UI:           http://$(hostname -I | awk '{print $1}'):8090"
         echo ""
         ;;

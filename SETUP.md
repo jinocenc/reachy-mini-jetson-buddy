@@ -1,6 +1,6 @@
-# Attention Warden — Setup Guide
+# Reachy Study Buddy — Setup Guide
 
-Complete installation instructions for flashing and running the Attention Warden study buddy on a Reachy Mini robot tethered to an NVIDIA Jetson Orin Nano.
+Complete installation instructions for flashing and running the Reachy Study Buddy study buddy on a Reachy Mini robot tethered to an NVIDIA Jetson Orin Nano.
 
 ---
 
@@ -32,7 +32,7 @@ If you're new to Reachy Mini, start with the [official docs](https://huggingface
 
 ## Quick Start (Automated)
 
-The fastest path from a fresh JetPack flash to a running Warden:
+The fastest path from a fresh JetPack flash to a running Reachy:
 
 ```bash
 git clone https://github.com/jinocenc/reachy-mini-jetson-buddy.git
@@ -331,7 +331,7 @@ wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/mo
 
 ---
 
-## Running the Attention Warden
+## Running the Reachy Study Buddy
 
 ### Full Vision + Web UI (Recommended)
 
@@ -341,7 +341,7 @@ source venv/bin/activate
 # 1. Launch model stack
 ./scripts/launch_model.sh study_buddy_balanced
 
-# 2. Start the Warden
+# 2. Start Reachy
 python3 run_web_vision_chat.py
 
 # 3. Open the web UI
@@ -387,7 +387,7 @@ export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
 **VLM server not responding:**
 ```bash
 docker ps                    # Check container is running
-docker logs warden-vlm       # View logs (or assistant-llm for raw launches)
+docker logs reachy-vlm       # View logs (or assistant-llm for raw launches)
 ```
 
 **OOM kills / system freezing:**
@@ -415,6 +415,6 @@ fuser -k /dev/video0          # Kill process holding it
 
 **Docker model containers won't start:**
 ```bash
-./scripts/launch_model.sh stop   # Clean up all Warden containers
+./scripts/launch_model.sh stop   # Clean up all Reachy containers
 ./scripts/launch_model.sh study_buddy_balanced   # Relaunch
 ```

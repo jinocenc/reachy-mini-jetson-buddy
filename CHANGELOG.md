@@ -1,8 +1,30 @@
 # Changelog
 
-## [Unreleased] — 2026-03-21
+## [0.2] — 2026-03-21
 
-### The Attention Warden Fork
+### Reachy Gets Friendlier + Vision Analysis Requirements + Demo Mode
+
+**Personality rename:** "Attention Warden" → "Reachy." The surveillance-gargoyle persona is dead. Reachy is now a warm, supportive study buddy — "like a good friend who actually wants to see you succeed." All system prompts, few-shot examples, and PRD language updated to match.
+
+**Demo mode:** New `pomodoro` config section with `mode: "demo"` option. Demo timers: 5 min work / 2 min break / 3 min long break / 2 cycles. Designed for presentations, testing, and first-time setup where nobody wants to wait 25 minutes to see if escalation works.
+
+**Vision frame analysis requirements (FR-12 through FR-31):** The PRD now defines exactly what Reachy should expect to see in each camera frame and how to respond:
+
+- **Person at desk:** Focused (no action), phone distraction (escalate), disengaged/idle (gentle check-in), social distraction (during work only), brief stretching (never a distraction).
+- **Empty workspace:** ABSENT classification. During work periods, note it and welcome back. During breaks, expected behavior.
+- **Screen content visible:** Classify by application *category* not specific text. Study content (docs, IDEs, lecture slides) = on track. Distraction content (social media, streaming, games) = escalate during work. Ambiguous content (YouTube, Wikipedia, Stack Overflow) = default to no alert. Never read or log specific text — privacy boundary.
+- **Obstructed view:** Dark, blurry, covered = notify user once, fall back to audio-only. Never fabricate scene details.
+
+**Files changed:**
+- `config/settings.yaml` — All "Attention Warden" references → "Reachy." Prompts rewritten warmer. Vision system prompt now includes structured image classification instructions (PERSON AT DESK, EMPTY WORKSPACE, SCREEN VISIBLE, OBSTRUCTED). Few-shot examples updated ("Hey Reachy" not "Hey Warden"). New `pomodoro` section with `standard` and `demo` timing configs.
+- `app/config.py` — Added `PomodoroTimingConfig` and `PomodoroConfig` dataclasses. `PomodoroConfig` has a `.active` property that returns the timing config for the current mode. Config loader updated to handle nested Pomodoro YAML structure.
+- `PRD.md` — Version 0.2. Renamed throughout. Added FR-12 through FR-31 (vision frame analysis). Added FR-07 (demo mode). Updated escalation language to be warm not punitive. Added demo mode to Pomodoro section (6.2). Added vision classification accuracy to success metrics. Added open question about ambiguous screen content and demo mode escalation timer compression.
+
+---
+
+## [0.1] — 2026-03-21
+
+### The Study Buddy Fork
 
 Forked from [NVIDIA's Reachy Mini Jetson Assistant](https://github.com/NVIDIA-AI-IOT/reachy-mini-jetson-assistant) and retooled as an embodied AI study buddy — a stationary robot with emotive capabilities and tactile feedback that observes the user during study sessions, manages Pomodoro timers, detects distractions via camera and microphone, and uses an escalating alert system to bring focus back without being obnoxious about it.
 
