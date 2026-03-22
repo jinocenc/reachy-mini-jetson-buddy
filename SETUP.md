@@ -1,33 +1,79 @@
-# Setup Guide
+# Attention Warden — Setup Guide
 
-Full installation instructions for the Reachy Mini Jetson Assistant.
+Complete installation instructions for flashing and running the Attention Warden study buddy on a Reachy Mini robot tethered to an NVIDIA Jetson Orin Nano.
+
+---
 
 ## Prerequisites
 
 ### Hardware
 
-- **NVIDIA Jetson Orin Nano** (8GB) — other Jetson modules may work but are untested
-- **[Reachy Mini Lite](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started)** — the developer version, USB connection to your computer. Provides camera, microphone, speaker, and 9-DOF motor control in one cable. [Buy Reachy Mini](https://www.hf.co/reachy-mini/)
-- **NVMe SSD** recommended — for swap space and model storage
+| Component | Details |
+|---|---|
+| **NVIDIA Jetson Orin Nano** (8GB) | Primary compute unit. Other Jetson modules may work but are untested. |
+| **Reachy Mini Lite** | Developer version — provides camera, omni-directional microphone, speaker, and 9-DOF motor control over a single USB connection. [Getting started guide](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started). [Buy Reachy Mini](https://www.hf.co/reachy-mini/). |
+| **NVMe SSD** | Required for swap space and model storage. Running the full stack (STT + VLM + TTS + CV) exceeds 8GB RAM without swap. |
+| **USB-C power supply** | Jetson Orin Nano requires a stable 5V/3A supply. |
 
-If you're new to Reachy Mini, start with the [official getting started guide](https://huggingface.co/docs/reachy_mini/index) and the [Reachy Mini Lite setup](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started). The [Python SDK documentation](https://huggingface.co/docs/reachy_mini/SDK/readme) covers movement, camera, audio, and AI integrations.
+If you're new to Reachy Mini, start with the [official docs](https://huggingface.co/docs/reachy_mini/index) and the [Python SDK reference](https://huggingface.co/docs/reachy_mini/SDK/readme) covering movement, camera, audio, and AI integrations.
 
 ### Software
 
-- **JetPack 6.x** (L4T r36.x, Ubuntu 22.04, CUDA 12.6)
-- **Python 3.10** (ships with JetPack 6 Ubuntu 22.04)
-- **Docker** with NVIDIA runtime (`nvidia-container-toolkit`)
-- **PulseAudio** (for mic/speaker multiplexing)
+| Requirement | Version |
+|---|---|
+| **JetPack** | 6.x (L4T r36.x, Ubuntu 22.04, CUDA 12.6) |
+| **Python** | 3.10 (ships with JetPack 6) |
+| **Docker** | With NVIDIA runtime (`nvidia-container-toolkit`) |
+| **PulseAudio** | For mic/speaker multiplexing |
 
-> **Important:** This project requires **Python 3.10** specifically. The Jetson ONNX Runtime GPU wheels, CTranslate2 builds, and Reachy Mini SDK are all built against Python 3.10 on JetPack 6. Using a different Python version will cause compatibility issues.
+> **Important:** This project requires **Python 3.10** specifically. The Jetson ONNX Runtime GPU wheels, CTranslate2 builds, and Reachy Mini SDK are all compiled against Python 3.10 on JetPack 6. Using a different Python version will cause binary incompatibilities.
 
-## Hardware Setup
+---
 
-### Reachy Mini Lite
+## Quick Start (Automated)
 
-1. Connect Reachy Mini Lite to your Jetson via USB. The robot provides camera, microphone, speaker, and motor control over a single USB connection.
+The fastest path from a fresh JetPack flash to a running Warden:
 
-2. Add udev rules so the SDK can access the robot's serial ports without root:
+```bash
+git clone https://github.com/jinocenc/reachy-mini-jetson-buddy.git
+cd reachy-mini-jetson-buddy
+chmod +x scripts/setup_jetson.sh
+./scripts/setup_jetson.sh
+```
+
+This automates everything below — system deps, udev rules, swap, Python venv, CTranslate2 CUDA build, Docker image pull, model downloads, and verification. Takes 30-60 minutes depending on network speed and CTranslate2 compilation.
+
+For partial runs:
+```bash
+./scripts/setup_jetson.sh --deps-only    # System deps + Python env only
+./scripts/setup_jetson.sh --ctranslate2  # Build CTranslate2 only
+./scripts/setup_jetson.sh --models       # Download models only
+./scripts/setup_jetson.sh --docker       # Pull Docker image only
+./scripts/setup_jetson.sh --verify       # Verify installation
+```
+
+If you prefer to do it step-by-step, follow the manual instructions below.
+
+---
+
+## Manual Installation
+
+### Step 1: System Dependencies
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  python3.10-venv \
+  portaudio19-dev \
+  libasound2-dev \
+  pulseaudio-utils \
+  libcudnn9-dev-cuda-12 \
+  wget curl git
+```
+
+### Step 2: Reachy Mini USB Setup
+
+Connect Reachy Mini Lite to the Jetson via USB, then add udev rules so the SDK can access the serial ports without root:
 
 ```bash
 echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="0666", SYMLINK+="reachy_mini"' \
@@ -35,23 +81,22 @@ echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE=
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-3. Add your user to the `dialout` group and reboot:
+Add your user to the `dialout` group:
 
 ```bash
 sudo usermod -aG dialout $USER
 sudo reboot
 ```
 
-4. Verify the device is visible:
-
+Verify after reboot:
 ```bash
 ls -la /dev/ttyACM*
 # Should show /dev/ttyACM0, /dev/ttyACM1, etc.
 ```
 
-### NVMe Swap (Required for 8GB Jetson)
+### Step 3: NVMe Swap (Required for 8GB Jetson)
 
-Running STT + VLM + TTS simultaneously exceeds 8GB RAM. Setting up swap on NVMe prevents OOM kills:
+Running the full pipeline (STT + VLM + TTS + camera + emotion) peaks at ~7.5 GB RAM. Swap prevents OOM kills:
 
 ```bash
 sudo fallocate -l 8G /mnt/nvme/swapfile   # adjust path to your NVMe mount
@@ -63,37 +108,23 @@ sudo swapon /mnt/nvme/swapfile
 echo '/mnt/nvme/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-## Installation
-
-### Step 1: System Dependencies
+### Step 4: Clone and Create Virtual Environment
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y \
-  python3.10-venv \
-  portaudio19-dev \
-  libasound2-dev \
-  pulseaudio-utils \
-  libcudnn9-dev-cuda-12
-```
-
-### Step 2: Clone and Create Virtual Environment
-
-```bash
-git clone https://github.com/NVIDIA-AI-IOT/reachy-mini-jetson-assistant
-cd reachy-mini-jetson-assistant
+git clone https://github.com/jinocenc/reachy-mini-jetson-buddy.git
+cd reachy-mini-jetson-buddy
 python3.10 -m venv venv
 source venv/bin/activate
 ```
 
-### Step 3: Install Python Packages
+### Step 5: Install Python Packages
 
 ```bash
 pip install --upgrade pip wheel
 pip install -r requirements.txt
 ```
 
-### Step 4: Install ONNX Runtime GPU (Jetson-Specific)
+### Step 6: Install ONNX Runtime GPU (Jetson-Specific)
 
 The default `onnxruntime` from pip is CPU-only. For GPU inference (Kokoro TTS, Silero VAD) on Jetson:
 
@@ -101,15 +132,16 @@ The default `onnxruntime` from pip is CPU-only. For GPU inference (Kokoro TTS, S
 pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 ```
 
-> If `CUDAExecutionProvider` isn't listed after install, uninstall the CPU version first: `pip uninstall onnxruntime && pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
+> If `CUDAExecutionProvider` isn't listed after install, uninstall the CPU version first:
+> `pip uninstall onnxruntime && pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
 
-### Step 5: Install Reachy Mini SDK
+### Step 7: Install Reachy Mini SDK
 
 ```bash
 pip install reachy-mini
 ```
 
-### Step 6: Pin NumPy (Compatibility Fix)
+### Step 8: Pin NumPy (Compatibility Fix)
 
 The Jetson `onnxruntime-gpu` wheel requires NumPy 1.x:
 
@@ -117,9 +149,9 @@ The Jetson `onnxruntime-gpu` wheel requires NumPy 1.x:
 pip install "numpy==1.26.4"
 ```
 
-### Step 7: Build CTranslate2 with CUDA (GPU-Accelerated STT)
+### Step 9: Build CTranslate2 with CUDA (GPU-Accelerated STT)
 
-The pip `ctranslate2` package is CPU-only. For GPU-accelerated speech-to-text on Jetson, build from source:
+The pip `ctranslate2` package is CPU-only. For GPU-accelerated Faster Whisper on Jetson, build from source. This step takes 10-20 minutes:
 
 ```bash
 pip install pybind11
@@ -146,7 +178,13 @@ pip install .
 Persist the library path in your venv activation script:
 
 ```bash
-echo 'export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH' >> ~/reachy-mini-jetson-assistant/venv/bin/activate
+echo 'export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH' >> ~/reachy-mini-jetson-buddy/venv/bin/activate
+```
+
+### Step 10: Pull the llama.cpp Docker Image
+
+```bash
+docker pull ghcr.io/nvidia-ai-iot/llama_cpp:b8095-r36.4-tegra-aarch64-cu126-22.04
 ```
 
 ### Verify Installation
@@ -159,6 +197,7 @@ import onnxruntime; print('ONNX providers:', onnxruntime.get_available_providers
 from reachy_mini import ReachyMini; print('Reachy Mini SDK: OK')
 import faster_whisper; print('faster-whisper: OK')
 import kokoro_onnx; print('kokoro-onnx: OK')
+from piper import PiperVoice; print('piper-tts: OK')
 "
 ```
 
@@ -169,74 +208,213 @@ ONNX providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
 Reachy Mini SDK: OK
 faster-whisper: OK
 kokoro-onnx: OK
+piper-tts: OK
 ```
+
+---
 
 ## Models
 
-### LLM / VLM (served via llama.cpp Docker)
+### Inference Engine
 
-Models download automatically from HuggingFace on first launch. No manual download needed.
+All LLM/VLM models run via **llama.cpp** in a Docker container with full GPU offload. Models are served as an OpenAI-compatible API on `localhost:8080`. This was chosen over Ollama (unnecessary HTTP daemon overhead) and TensorRT-LLM (limited Maxwell/Orin support) for minimum memory footprint and maximum HuggingFace GGUF compatibility.
 
-| Model | Use | Launch Command |
-|-------|-----|----------------|
-| Cosmos-Reason2-2B (Q4_K_M) | Vision VLM | `NP=1 ./run_llama_cpp.sh Kbenkhaled/Cosmos-Reason2-2B-GGUF:Q4_K_M` |
-| Gemma 3 1B (Q8) | Text LLM | `./run_llama_cpp.sh ggml-org/gemma-3-1b-it-GGUF:Q8_0` |
-| bge-small-en-v1.5 (Q8) | RAG embeddings | `./run_llama_embedding.sh ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0` |
+### Model Registry
 
-Models are cached in `~/.cache/huggingface` and reused across runs.
+The full model inventory is defined in `config/models.yaml`. All models use Q4_K_M quantization to fit within the Jetson Orin Nano's 8GB RAM alongside the CV and audio pipelines.
 
-### TTS Voices
+#### Reasoning LLMs
 
-**Kokoro TTS** (default) downloads automatically on first run (~340 MB). No manual step needed.
+| Model | HuggingFace Repo | Role |
+|---|---|---|
+| NVIDIA Nemotron-Mini-4B-Instruct | `bartowski/Nemotron-Mini-4B-Instruct-GGUF` | Primary reasoning — distraction analysis, session management, conversation |
 
-To pre-download for offline use:
+#### Vision-Language Models (VLMs)
+
+| Model | HuggingFace Repo | Role |
+|---|---|---|
+| NVIDIA Nemotron Nano 2 VL | `bartowski/Nemotron-Nano-VL-8B-v1-GGUF` | Gaze tracking, activity classification, distraction detection |
+| Cosmos Reason 2 2B | `Kbenkhaled/Cosmos-Reason2-2B-GGUF` | Spatial reasoning, scene understanding |
+| Gemma 3 4B IT | `ggml-org/gemma-3-4b-it-GGUF` | General vision-language tasks |
+| Qwen3-VL-2B-Instruct | `Qwen/Qwen3-VL-2B-Instruct-GGUF` | Multilingual vision understanding |
+| Qwen3.5-VL-2B | `Qwen/Qwen3.5-VL-2B-Instruct-GGUF` | Latest Qwen VL — improved visual grounding |
+
+#### Speech-to-Text (ASR)
+
+| Model | Engine | Notes |
+|---|---|---|
+| Whisper small.en | Faster Whisper (CTranslate2 CUDA) | Default — best accuracy/speed tradeoff |
+| Whisper base.en | Faster Whisper | Lighter, faster |
+| Whisper tiny.en | Faster Whisper | Minimum footprint |
+
+#### Text-to-Speech (TTS)
+
+| Model | Engine | Notes |
+|---|---|---|
+| Kokoro TTS | kokoro-onnx (ONNX Runtime GPU) | High-quality neural TTS, natural prosody. Default for conversational responses. Subprocess-isolated for GPL compliance. |
+| Piper TTS | piper-tts (ONNX) | Fast, lightweight, MIT-licensed. Ideal for rapid distraction alerts where latency matters more than prosody. |
+
+#### Embeddings & Support Models
+
+| Model | Role |
+|---|---|
+| BGE-Small-EN-v1.5 (Q8) | RAG embeddings for knowledge retrieval |
+| DistilBERT SST-2 (ONNX) | Emotion/sentiment classification for robot reactions |
+
+### Downloading Models
+
+Pre-download everything for offline operation:
 
 ```bash
-wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
-wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
+./scripts/download_models.sh                # All models
+./scripts/download_models.sh --reasoning    # Reasoning LLMs only
+./scripts/download_models.sh --vision       # Vision VLMs only
+./scripts/download_models.sh --speech       # STT + TTS only
+./scripts/download_models.sh --tts          # TTS voices only
 ```
 
-Configure voice in `config/settings.yaml`:
+Models are cached in `~/.cache/huggingface` (GGUF models) and `voices/` (TTS assets).
+
+### Launching Models
+
+Use the profile launcher for one-command startup:
+
+```bash
+./scripts/launch_model.sh study_buddy_lite       # Cosmos-2B + Whisper base + Piper
+./scripts/launch_model.sh study_buddy_balanced    # Qwen3.5-VL + Whisper small + Kokoro
+./scripts/launch_model.sh study_buddy_full        # Nemotron-Nano-VL + Whisper small + Kokoro
+```
+
+Or launch individual models:
+
+```bash
+./scripts/launch_model.sh reasoning               # Nemotron-Mini-4B on :8080
+./scripts/launch_model.sh vision cosmos            # Cosmos-Reason2-2B on :8080
+./scripts/launch_model.sh vision qwen3.5           # Qwen3.5-VL-2B on :8080
+./scripts/launch_model.sh vision nemotron          # Nemotron-Nano-VL on :8080
+./scripts/launch_model.sh embeddings               # BGE-Small on :8081
+```
+
+Or use the raw Docker launcher directly:
+
+```bash
+NP=1 ./run_llama_cpp.sh Kbenkhaled/Cosmos-Reason2-2B-GGUF:Q4_K_M
+./run_llama_cpp.sh bartowski/Nemotron-Mini-4B-Instruct-GGUF:Q4_K_M
+./run_llama_embedding.sh ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0
+```
+
+### TTS Configuration
+
+Switch between TTS engines in `config/settings.yaml`:
 
 ```yaml
 tts:
-  voice: "af_sarah"    # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george
+  engine: "kokoro"          # High quality, natural prosody
+  voice: "af_sarah"         # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george
+
+tts:
+  engine: "piper"           # Fast, lightweight
+  voice: "en_US-amy-medium" # piper voices: en_US-amy-medium, en_US-lessac-medium
 ```
 
-### Emotion Model
+Kokoro TTS voices (~340 MB) and Piper voices (~60-80 MB each) download automatically on first use.
 
-The emotion classifier (DistilBERT SST-2, ~268 MB) downloads automatically on first run. No manual step needed.
+To pre-download for offline:
+```bash
+# Kokoro
+wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx
+wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 
-To pre-download for offline use:
+# Piper (handled by download_models.sh --tts)
+./scripts/download_models.sh --tts
+```
+
+---
+
+## Running the Attention Warden
+
+### Full Vision + Web UI (Recommended)
 
 ```bash
-mkdir -p models/emotion
-wget -O models/emotion/model.onnx \
-  "https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/onnx/model.onnx"
-wget -O models/emotion/tokenizer.json \
-  "https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/onnx/tokenizer.json"
+source venv/bin/activate
+
+# 1. Launch model stack
+./scripts/launch_model.sh study_buddy_balanced
+
+# 2. Start the Warden
+python3 run_web_vision_chat.py
+
+# 3. Open the web UI
+# http://<jetson-ip>:8090
 ```
+
+### Terminal-Only Vision Chat
+
+```bash
+python3 run_vision_chat.py
+```
+
+### Voice-Only Chat (No Camera)
+
+```bash
+python3 run_voice_chat.py          # With RAG
+python3 run_voice_chat.py --no-rag # Without RAG
+```
+
+### CLI Text Chat
+
+```bash
+python3 main.py chat -t
+python3 main.py ask "How does the Pomodoro technique work?"
+python3 main.py info
+```
+
+---
 
 ## Troubleshooting
 
 **`CUDAExecutionProvider` not available:**
-Uninstall CPU onnxruntime and reinstall the GPU version:
 ```bash
 pip uninstall onnxruntime
 pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 ```
 
 **CTranslate2 not finding CUDA:**
-Make sure the library path is set: `export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH`
+```bash
+export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH
+```
 
 **VLM server not responding:**
-Check the Docker container is running: `docker ps`. View logs: `docker logs assistant-llm`
+```bash
+docker ps                    # Check container is running
+docker logs warden-vlm       # View logs (or assistant-llm for raw launches)
+```
+
+**OOM kills / system freezing:**
+- Verify swap is active: `free -h` should show 8GB+ swap
+- Use the `study_buddy_lite` profile instead of `full`
+- Switch STT to `tiny.en` in `config/settings.yaml`
+- Switch TTS to `piper` (smaller footprint than Kokoro)
 
 **Process won't exit / robot stays awake after Ctrl+C:**
-The app handles Ctrl+C cleanly — the robot should go to sleep. If the process is stuck, run `pkill -9 -f run_web_vision_chat` and `pkill -f reachy-mini-daemon`.
+```bash
+pkill -9 -f run_web_vision_chat
+pkill -f reachy-mini-daemon
+```
 
 **Port 8090 already in use:**
-A previous instance is still running. Kill it: `lsof -ti :8090 | xargs kill -9`
+```bash
+lsof -ti :8090 | xargs kill -9
+```
 
 **Camera not found:**
-Check the device is available: `ls /dev/video*`. If another process holds it: `fuser -k /dev/video0`
+```bash
+ls /dev/video*                # Check device exists
+fuser -k /dev/video0          # Kill process holding it
+```
+
+**Docker model containers won't start:**
+```bash
+./scripts/launch_model.sh stop   # Clean up all Warden containers
+./scripts/launch_model.sh study_buddy_balanced   # Relaunch
+```

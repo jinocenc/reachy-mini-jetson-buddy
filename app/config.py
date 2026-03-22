@@ -45,6 +45,7 @@ class STTConfig:
 
 @dataclass
 class TTSConfig:
+    engine: str = "kokoro"              # "kokoro" (high quality) or "piper" (fast, lightweight)
     voice: str = "af_sarah"
     speed: float = 1.0
     lang: str = "en-us"

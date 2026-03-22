@@ -1,0 +1,178 @@
+# Attention Warden — Model Registry
+# All models served via llama.cpp Docker (GGUF format) or native Python packages.
+#
+# Usage:
+#   ./scripts/launch_model.sh reasoning       # Launch Nemotron-Mini-4B
+#   ./scripts/launch_model.sh vision           # Launch Nemotron Nano 2 VL
+#   ./scripts/download_models.sh               # Pre-download all GGUF models
+#
+# Each profile defines the HuggingFace GGUF repo, quantization, context size,
+# and parallel slots for the llama.cpp Docker container.
+
+# ─────────────────────────────────────────────────────────────────
+# REASONING / TEXT LLMs
+# ─────────────────────────────────────────────────────────────────
+
+reasoning:
+  nemotron_mini_4b:
+    name: "NVIDIA Nemotron-Mini-4B-Instruct"
+    hf_repo: "bartowski/Nemotron-Mini-4B-Instruct-GGUF"
+    quant: "Q4_K_M"
+    role: "reasoning"
+    context: 4096
+    parallel_slots: 1
+    port: 8080
+    description: "Primary reasoning LLM — distraction analysis, session management, conversational responses"
+
+# ─────────────────────────────────────────────────────────────────
+# VISION-LANGUAGE MODELS (VLMs)
+# ─────────────────────────────────────────────────────────────────
+
+vision:
+  nemotron_nano_2_vl:
+    name: "NVIDIA Nemotron Nano 2 VL"
+    hf_repo: "bartowski/Nemotron-Nano-VL-8B-v1-GGUF"
+    quant: "Q4_K_M"
+    role: "vision"
+    context: 4096
+    parallel_slots: 1
+    port: 8080
+    description: "NVIDIA's edge VLM — gaze tracking, activity classification, distraction detection"
+
+  cosmos_reason2_2b:
+    name: "Cosmos Reason 2 2B"
+    hf_repo: "Kbenkhaled/Cosmos-Reason2-2B-GGUF"
+    quant: "Q4_K_M"
+    role: "vision"
+    context: 4096
+    parallel_slots: 1
+    port: 8080
+    description: "Spatial reasoning VLM — scene understanding, object detection"
+
+  gemma3_4b_vlm:
+    name: "Gemma 3 4B IT"
+    hf_repo: "ggml-org/gemma-3-4b-it-GGUF"
+    quant: "Q4_K_M"
+    role: "vision"
+    context: 4096
+    parallel_slots: 1
+    port: 8080
+    description: "Google's compact VLM — general vision-language tasks"
+
+  qwen3_vl_2b:
+    name: "Qwen3-VL-2B-Instruct"
+    hf_repo: "Qwen/Qwen3-VL-2B-Instruct-GGUF"
+    quant: "Q4_K_M"
+    role: "vision"
+    context: 4096
+    parallel_slots: 1
+    port: 8080
+    description: "Alibaba's vision model — strong multilingual vision understanding"
+
+  qwen3_5_vl_2b:
+    name: "Qwen3.5-VL-2B"
+    hf_repo: "Qwen/Qwen3.5-VL-2B-Instruct-GGUF"
+    quant: "Q4_K_M"
+    role: "vision"
+    context: 4096
+    parallel_slots: 1
+    port: 8080
+    description: "Latest Qwen VL — improved visual grounding and reasoning"
+
+# ─────────────────────────────────────────────────────────────────
+# SPEECH-TO-TEXT (STT / ASR)
+# ─────────────────────────────────────────────────────────────────
+
+stt:
+  faster_whisper_small:
+    name: "Faster Whisper (small.en)"
+    engine: "faster-whisper"
+    model: "small.en"
+    device: "cuda"
+    compute_type: "int8"
+    description: "Default ASR — good accuracy, low latency on Jetson"
+
+  faster_whisper_base:
+    name: "Faster Whisper (base.en)"
+    engine: "faster-whisper"
+    model: "base.en"
+    device: "cuda"
+    compute_type: "int8"
+    description: "Lighter ASR — faster but less accurate"
+
+  faster_whisper_tiny:
+    name: "Faster Whisper (tiny.en)"
+    engine: "faster-whisper"
+    model: "tiny.en"
+    device: "cuda"
+    compute_type: "int8"
+    description: "Minimum footprint ASR — for memory-constrained configs"
+
+# ─────────────────────────────────────────────────────────────────
+# TEXT-TO-SPEECH (TTS)
+# ─────────────────────────────────────────────────────────────────
+
+tts:
+  kokoro:
+    name: "Kokoro TTS"
+    engine: "kokoro"
+    voices:
+      - "af_sarah"
+      - "af_bella"
+      - "am_adam"
+      - "bf_emma"
+      - "bm_george"
+    default_voice: "af_sarah"
+    description: "High-quality neural TTS — natural prosody, GPU-accelerated via ONNX"
+
+  piper:
+    name: "Piper TTS"
+    engine: "piper"
+    voices:
+      - "en_US-amy-medium"
+      - "en_US-lessac-medium"
+      - "en_US-libritts_r-medium"
+      - "en_GB-alba-medium"
+    default_voice: "en_US-amy-medium"
+    description: "Fast lightweight TTS — lower latency, smaller footprint, good for rapid alerts"
+
+# ─────────────────────────────────────────────────────────────────
+# EMBEDDINGS (for RAG knowledge base)
+# ─────────────────────────────────────────────────────────────────
+
+embeddings:
+  bge_small:
+    name: "BGE Small EN v1.5"
+    hf_repo: "ggml-org/bge-small-en-v1.5-Q8_0-GGUF"
+    quant: "Q8_0"
+    port: 8081
+    description: "Compact embedding model for knowledge retrieval"
+
+# ─────────────────────────────────────────────────────────────────
+# DEFAULT PROFILES — which models to load for each use case
+# ─────────────────────────────────────────────────────────────────
+
+profiles:
+  # Minimum viable config — fits in 8GB with room for CV pipeline
+  study_buddy_lite:
+    reasoning: "nemotron_mini_4b"
+    vision: "cosmos_reason2_2b"
+    stt: "faster_whisper_base"
+    tts: "piper"
+    description: "Lightweight config — prioritizes responsiveness over capability"
+
+  # Balanced config — best VLM + good reasoning
+  study_buddy_balanced:
+    reasoning: "nemotron_mini_4b"
+    vision: "qwen3_5_vl_2b"
+    stt: "faster_whisper_small"
+    tts: "kokoro"
+    description: "Balanced config — strong vision + natural speech"
+
+  # Maximum capability — swap VLMs as needed
+  study_buddy_full:
+    reasoning: "nemotron_mini_4b"
+    vision: "nemotron_nano_2_vl"
+    stt: "faster_whisper_small"
+    tts: "kokoro"
+    description: "Full capability — NVIDIA VLM stack, highest accuracy"

@@ -193,6 +193,14 @@ class KokoroTTS:
 
 
 def create_tts(voice: str = "", speed: float = 1.0, lang: str = "en-us",
-               **_kwargs):
-    """Create the TTS backend (Kokoro, subprocess-isolated)."""
+               engine: str = "kokoro", **_kwargs):
+    """Create a TTS backend.
+
+    Args:
+        engine: "kokoro" (default, high quality) or "piper" (fast, lightweight).
+    """
+    if engine == "piper":
+        from app.tts_piper import PiperTTS
+        return PiperTTS(voice=voice or "en_US-amy-medium", speed=speed)
+
     return KokoroTTS(voice=voice or "af_sarah", speed=speed, lang=lang)

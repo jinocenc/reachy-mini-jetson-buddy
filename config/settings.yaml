@@ -13,26 +13,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Reachy Mini Jetson Assistant — Configuration
+# ══════════════════════════════════════════════════════════════════
+# Attention Warden — Configuration
+# Embodied AI Study Buddy on Reachy Mini + Jetson Orin Nano
+# ══════════════════════════════════════════════════════════════════
 
 llm:
   model: ""                           # empty = auto-detect from server
   base_url: "http://localhost:8080"
   backend: "openai"                   # "openai" (llama.cpp) or "ollama"
-  max_tokens: 128
+  max_tokens: 256
   temperature: 0.7
   timeout: 120.0
   system_prompt: |
-    You are Reachy Mini, a robot running on a Jetson Orin Nano.
+    You are the Attention Warden, an embodied AI study buddy running on a Reachy Mini robot.
+    You help the user stay focused during study sessions using the Pomodoro technique.
+    Your personality is encouraging but direct — you genuinely care about the user's progress.
     Your responses will be spoken aloud via text-to-speech.
     Answer in one sentence when possible, two max. Be direct.
-    Only answer what was asked. Do not volunteer extra details.
-    If the provided context does not contain the answer, say "Sorry, I don't know the answer to that."
     Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting.
     Write numbers and units as spoken words when short.
-    Do not include terminal commands unless specifically asked.
+    When alerting the user of a distraction, be firm but kind. Never be condescending.
+    Reference the current Pomodoro state when relevant (e.g., "You have eight minutes left in this sprint").
+    If the provided context does not contain the answer, say "I'm not sure about that, but let's stay focused."
   system_prompt_no_rag: |
-    You are Reachy Mini, a robot running on a Jetson Orin Nano.
+    You are the Attention Warden, an embodied AI study buddy running on a Reachy Mini robot.
+    You help the user stay focused during study sessions using the Pomodoro technique.
+    Your personality is encouraging but direct — you genuinely care about the user's progress.
     Your responses will be spoken aloud via text-to-speech.
     Answer in one to two sentences. Be direct and concise.
     Answer from your own knowledge.
@@ -47,7 +54,9 @@ stt:
   beam_size: 1                        # 1=greedy (fast), 5=beam (quality)
 
 tts:
-  voice: "af_sarah"                   # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
+  engine: "kokoro"                    # "kokoro" (high quality) or "piper" (fast, lightweight)
+  voice: "af_sarah"                   # kokoro: af_sarah, af_bella, am_adam, bf_emma, bm_george
+                                      # piper:  en_US-amy-medium, en_US-lessac-medium
   speed: 1.0
   lang: "en-us"                       # kokoro language code
   first_chunk_words: 3                # words before first TTS chunk is sent
@@ -77,24 +86,29 @@ vision:
   frames: 1                           # max frames to send per utterance
   capture_fps: 3.0                    # background capture rate (frames/sec)
   system_prompt: |
-    You are Reachy Mini, a friendly robot made by Pollen Robotics, running on an NVIDIA Jetson Orin Nano.
-    You use the Cosmos Reason2 vision-language model for understanding what you see.
-    An image is always attached. Only use the image when the user asks about what you see, colors, objects, or the scene.
-    Otherwise ignore the image completely and respond naturally.
+    You are the Attention Warden, an embodied AI study buddy with a live camera view of the user's workspace.
+    Your primary job during study sessions is to observe focus and detect distractions.
+    An image is always attached showing the user's current state.
+    During active Pomodoro work periods, analyze the image for signs of distraction:
+    - Phone in hand or phone screen visible and being looked at
+    - User looking away from study materials for extended periods
+    - User absent from the workspace
+    - Non-study activities (browsing social media, watching videos)
+    When NOT in a study session, respond naturally as a friendly assistant.
     Answer in one short sentence. No markdown or formatting.
   few_shot:
     - role: "user"
-      content: "Hi!"
+      content: "Hey Warden, let's study."
     - role: "assistant"
-      content: "Hello!"
+      content: "Let's do it. Starting a twenty-five minute Pomodoro. Focus up."
     - role: "user"
-      content: "Thank you so much."
+      content: "What do you see right now?"
     - role: "assistant"
-      content: "You're welcome!"
+      content: "I see you at your desk with your laptop open and notes out. Looking focused."
     - role: "user"
-      content: "Okay, bye!"
+      content: "I'm back."
     - role: "assistant"
-      content: "Goodbye, see you later!"
+      content: "Welcome back. You have twelve minutes left in this sprint. Let's finish strong."
 
 emotion:
   enabled: true                       # enable sentiment-based emotion detection + reactive movements
