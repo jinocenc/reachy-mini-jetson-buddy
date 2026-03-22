@@ -45,11 +45,12 @@ from app.camera import Camera
 from app.monitor import get_system_stats, get_jetson_model
 from app.pipeline import (
     SAMPLE_RATE, TTS_BREAKS, MicRecorder, warmup_stt, vad_loop,
-    tts_player, load_silero,
+    tts_player, load_silero, play_audio,
 )
 from app.reachy import kill_stale_camera_holders, connect as connect_reachy
-from app.emotion import EmotionDetector
+from app.emotion import EmotionDetector, Emotion
 from app.movements import MovementController
+from app.session import SessionManager, Phase, DistractionLevel
 from app.web import Broadcaster, start_web_server
 from rich.console import Console
 from rich.panel import Panel
@@ -57,7 +58,154 @@ from rich.panel import Panel
 console = Console()
 
 
+# ── Focus classification ──────────────────────────────────────────
+
+CLASSIFY_PROMPT = (
+    "Classify this workspace image. Reply with EXACTLY one word from: "
+    "FOCUSED, PHONE_DISTRACTION, DISENGAGED, SOCIAL_DISTRACTION, "
+    "ABSENT, STUDY_CONTENT, DISTRACTION_CONTENT, OBSTRUCTED\n"
+    "Then a space and confidence 0.0-1.0. Example: FOCUSED 0.9"
+)
+
+CLASSIFY_SYSTEM_PROMPT = (
+    "You are a workspace classifier. Reply with exactly one classification word "
+    "and a confidence score. Nothing else."
+)
+
+VALID_CLASSIFICATIONS = frozenset({
+    "FOCUSED", "PHONE_DISTRACTION", "DISENGAGED", "SOCIAL_DISTRACTION",
+    "ABSENT", "STUDY_CONTENT", "DISTRACTION_CONTENT", "OBSTRUCTED",
+})
+
+CLASSIFY_INTERVAL_SECS = 10.0
+
+
+# ── Phase announcements ──────────────────────────────────────────
+
+_PHASE_ANNOUNCEMENTS = {
+    (Phase.WORK, Phase.SHORT_BREAK): "Nice work! Time for a five minute break.",
+    (Phase.WORK, Phase.LONG_BREAK): "Great session! You earned a long break.",
+    (Phase.SHORT_BREAK, Phase.WORK): "Break's over, let's get back to it!",
+    (Phase.LONG_BREAK, Phase.COMPLETE): "You did it! All your pomodoros are done. Amazing focus today.",
+}
+
+_ESCALATION_MESSAGES = {
+    DistractionLevel.L3_CHECKIN: "Hey, you've drifted for a minute. Want to get back to it?",
+    DistractionLevel.L4_DIRECT: "You've been away from your work for two minutes. Let's refocus, you've got this.",
+}
+
+_PHASE_EMOTIONS = {
+    (Phase.WORK, Phase.SHORT_BREAK): Emotion.HAPPY,
+    (Phase.WORK, Phase.LONG_BREAK): Emotion.HAPPY,
+    (Phase.SHORT_BREAK, Phase.WORK): Emotion.GREETING,
+    (Phase.LONG_BREAK, Phase.COMPLETE): Emotion.EXCITED,
+}
+
+
+# ── Voice command parsing ─────────────────────────────────────────
+
+_SESSION_COMMANDS = [
+    ("stop", ["i'm done", "im done", "stop studying", "end the session", "stop the timer", "that's enough"]),
+    ("pause", ["take a break", "pause the timer", "hold on", "pause"]),
+    ("resume", ["i'm back", "im back", "resume", "let's continue", "lets continue", "back to work"]),
+    ("status", ["how am i doing", "how's my focus", "hows my focus", "what's the timer",
+                "whats the timer", "time left", "how much time"]),
+    ("start", ["let's study", "lets study", "start studying", "start a session",
+               "start the timer", "begin studying", "pomodoro"]),
+]
+
+
+def _parse_session_command(text: str):
+    """Check transcript for session commands. Returns command name or None."""
+    lower = text.lower().strip()
+    for cmd, keywords in _SESSION_COMMANDS:
+        if any(kw in lower for kw in keywords):
+            return cmd
+    return None
+
+
+def _build_system_prompt(base: str, session: SessionManager) -> str:
+    """Append live session state to the system prompt for context-aware responses."""
+    if not session.is_active:
+        return base
+    snap = session.snapshot()
+    remaining = int(snap["phase_remaining_secs"])
+    mins, secs = remaining // 60, remaining % 60
+    return base + (
+        f"\n\n[Session State] Phase: {snap['phase']}, "
+        f"Time remaining: {mins}:{secs:02d}, "
+        f"Focus: {snap['focus_percent']}%, "
+        f"Completed pomodoros: {snap['completed_pomodoros']}. "
+        f"{'The student is currently distracted.' if snap['is_distracted'] else 'The student is focused.'}"
+    )
+
+
 # ── Background threads ───────────────────────────────────────────
+
+def _focus_classifier_loop(cam, llm, session, classify_ok, stop_event):
+    """Periodically classify workspace focus state via VLM during WORK phases."""
+    while not stop_event.is_set():
+        stop_event.wait(timeout=CLASSIFY_INTERVAL_SECS)
+        if stop_event.is_set():
+            break
+        if not session.is_work_phase:
+            continue
+        if not classify_ok.wait(timeout=5.0):
+            continue
+
+        frame = cam.capture_single()
+        if not frame:
+            continue
+
+        classify_ok.clear()
+        try:
+            response = ""
+            for chunk_data in llm.generate_stream(
+                prompt=CLASSIFY_PROMPT,
+                system_prompt=CLASSIFY_SYSTEM_PROMPT,
+                max_tokens=20,
+                temperature=0.1,
+                images_b64=[frame],
+            ):
+                content, _ = chunk_data if isinstance(chunk_data, tuple) else (chunk_data, {})
+                if content:
+                    response += content
+
+            parts = response.strip().split()
+            classification = parts[0].upper() if parts else "OBSTRUCTED"
+            if classification not in VALID_CLASSIFICATIONS:
+                classification = "OBSTRUCTED"
+            confidence = 0.8
+            if len(parts) > 1:
+                try:
+                    confidence = max(0.0, min(1.0, float(parts[1])))
+                except ValueError:
+                    pass
+            session.report_focus(classification, confidence)
+        except Exception:
+            pass
+        finally:
+            classify_ok.set()
+
+
+def _announcement_player_loop(tts_obj, pa_sink, announcement_q, stop_event):
+    """Play TTS announcements for phase changes and escalation nudges."""
+    while not stop_event.is_set():
+        try:
+            item = announcement_q.get(timeout=1.0)
+        except queue.Empty:
+            continue
+        if item is None:
+            break
+        _kind, text, _snap = item
+        if tts_obj:
+            try:
+                r = tts_obj.synthesize(text)
+                if r.get("audio") is not None:
+                    play_audio(r["audio"], r["sample_rate"], sink=pa_sink)
+            except Exception:
+                pass
+
 
 def _frame_broadcast_thread(cam: Camera, broadcaster: Broadcaster, fps: float = 10.0):
     """Stream camera frames to browsers at UI fps via direct hardware reads.
@@ -78,9 +226,10 @@ def _stats_broadcast_thread(
     broadcaster: Broadcaster,
     models: dict,
     reachy,
+    session: SessionManager,
     interval: float = 2.0,
 ):
-    """Periodically send system stats + robot status to all WebSocket clients."""
+    """Periodically send system stats + robot status + session state to all WebSocket clients."""
     while True:
         try:
             s = get_system_stats()
@@ -102,6 +251,14 @@ def _stats_broadcast_thread(
                 "motors": True if reachy else False,
                 "head": "Up" if reachy else "N/A",
             })
+
+            # Broadcast session state
+            if session.is_active:
+                broadcaster.send({
+                    "type": "session",
+                    "event": "tick",
+                    "snapshot": session.snapshot(),
+                })
         except Exception:
             pass
         time.sleep(interval)
@@ -165,6 +322,11 @@ def main():
     llm = None
     tts = None
     silero_model = None
+    session = SessionManager(config.pomodoro)
+    _classify_ok = threading.Event()
+    _classify_ok.set()
+    _announcement_q = queue.Queue()
+    _stop_threads = threading.Event()
 
     # ── Cleanup handler ──────────────────────────────────────────
     _cleanup_done = threading.Event()
@@ -174,6 +336,11 @@ def main():
             return
         _cleanup_done.set()
         console.print("\n[yellow]Shutting down...[/yellow]")
+        # Stop session and background threads
+        if session.is_active:
+            session.stop_session()
+        _stop_threads.set()
+        _announcement_q.put(None)
         if mic:
             try:
                 mic.stop()
@@ -254,6 +421,50 @@ def main():
             console.print("  ⚠ Emotion detector unavailable")
             emotion_detector = None
 
+    # ── Session Manager ─────────────────────────────────────────
+
+    def _on_phase_change(old_phase, new_phase, snap):
+        key = (old_phase, new_phase)
+        text = _PHASE_ANNOUNCEMENTS.get(key)
+        if text:
+            _announcement_q.put(("phase", text, snap))
+        # Broadcast phase change to web UI
+        broadcaster.send({
+            "type": "session",
+            "event": "phase_change",
+            "old_phase": old_phase,
+            "new_phase": new_phase,
+            "snapshot": snap,
+        })
+        emo = _PHASE_EMOTIONS.get(key)
+        if emo and mover:
+            try:
+                mover.react(emo, 0.95)
+            except Exception:
+                pass
+
+    def _on_escalation(level, snap):
+        if level in (DistractionLevel.L1_NUDGE, DistractionLevel.L2_LOOK):
+            if mover:
+                try:
+                    mover.react(Emotion.CURIOUS, 0.9)
+                except Exception:
+                    pass
+        # Broadcast escalation to web UI
+        broadcaster.send({
+            "type": "session",
+            "event": "escalation",
+            "level": level,
+            "snapshot": snap,
+        })
+        text = _ESCALATION_MESSAGES.get(level)
+        if text:
+            _announcement_q.put(("escalation", text, snap))
+
+    session.on_phase_change = _on_phase_change
+    session.on_escalation = _on_escalation
+    console.print("  ✓ Session manager (Pomodoro)")
+
     # ── Start mic ────────────────────────────────────────────────
     effective_chunk_ms = 32 if silero_model else config.vad.chunk_ms
     mic = MicRecorder(console, chunk_ms=effective_chunk_ms)
@@ -282,8 +493,21 @@ def main():
 
     threading.Thread(
         target=_stats_broadcast_thread,
-        args=(broadcaster, model_info, reachy),
+        args=(broadcaster, model_info, reachy, session),
         daemon=True, name="stats-broadcaster",
+    ).start()
+
+    # Start session-related background threads
+    threading.Thread(
+        target=_focus_classifier_loop,
+        args=(cam, llm, session, _classify_ok, _stop_threads),
+        daemon=True, name="focus-classifier",
+    ).start()
+
+    threading.Thread(
+        target=_announcement_player_loop,
+        args=(tts, mic.pa_sink, _announcement_q, _stop_threads),
+        daemon=True, name="announcement-player",
     ).start()
 
     platform_name = get_jetson_model()
@@ -361,6 +585,45 @@ def main():
                 mic.resume()
                 continue
 
+            # ── Session command check ─────────────────────────
+            cmd = _parse_session_command(text)
+            if cmd == "start" and not session.is_active:
+                session.start_session()
+                console.print("  [cyan]Session started[/cyan]")
+                broadcaster.send({
+                    "type": "session",
+                    "event": "started",
+                    "snapshot": session.snapshot(),
+                })
+            elif cmd == "stop" and session.is_active:
+                session.stop_session()
+                summary = session.session_summary()
+                console.print(
+                    f"  [cyan]Session ended — {summary['completed_pomodoros']} pomodoros, "
+                    f"{summary['focus_percent']}% focus[/cyan]"
+                )
+                broadcaster.send({
+                    "type": "session",
+                    "event": "stopped",
+                    "summary": summary,
+                })
+            elif cmd == "pause" and session.is_active:
+                session.pause_session()
+                console.print("  [cyan]Session paused[/cyan]")
+                broadcaster.send({
+                    "type": "session",
+                    "event": "paused",
+                    "snapshot": session.snapshot(),
+                })
+            elif cmd == "resume":
+                session.resume_session()
+                console.print("  [cyan]Session resumed[/cyan]")
+                broadcaster.send({
+                    "type": "session",
+                    "event": "resumed",
+                    "snapshot": session.snapshot(),
+                })
+
             emotion_tag = ""
             if emotion_detector:
                 emo = emotion_detector.detect(text)
@@ -371,9 +634,12 @@ def main():
                 )
 
             n_imgs = len(captured_frames)
+            session_tag = ""
+            if session.is_active:
+                session_tag = f" | {session.phase} {session.remaining_formatted()}"
             console.print(
                 f'  [green]You:[/green] "{text}" '
-                f'[dim]({n_imgs} frame{"s" if n_imgs != 1 else ""} captured)[/dim]'
+                f'[dim]({n_imgs} frame{"s" if n_imgs != 1 else ""} captured{session_tag})[/dim]'
             )
             broadcaster.send({
                 "type": "transcript",
@@ -403,8 +669,10 @@ def main():
             t_llm = time.perf_counter()
             ttft = None
 
+            effective_prompt = _build_system_prompt(vision_system_prompt, session)
+            _classify_ok.clear()
             for chunk_data in llm.generate_stream(
-                prompt=text, system_prompt=vision_system_prompt,
+                prompt=text, system_prompt=effective_prompt,
                 images_b64=captured_frames if captured_frames else None,
                 few_shot=vision_few_shot if vision_few_shot else None,
             ):
@@ -430,6 +698,7 @@ def main():
                             first_tts_sent = True
 
             dt_llm = time.perf_counter() - t_llm
+            _classify_ok.set()
 
             if tts_q is not None:
                 if tts_buf.strip():
